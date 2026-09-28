@@ -1,0 +1,346 @@
+---
+import '../styles/global.css';
+
+const sliders = [
+  { id: 'pieces', label: 'Piezas', min: 12, max: 800, step: 1, value: 150, unit: '' },
+  { id: 'width', label: 'Ancho', min: 50, max: 800, step: 5, value: 300, unit: 'mm' },
+  { id: 'height', label: 'Alto', min: 50, max: 800, step: 5, value: 300, unit: 'mm' },
+  { id: 'concentration', label: 'Concentración', min: 0, max: 100, step: 1, value: 70, unit: '%' },
+  { id: 'tab', label: 'Pestaña', min: 0, max: 12, step: 0.5, value: 6, unit: 'mm' },
+];
+const styles = [
+  { value: 'mixed', label: 'Mixta' },
+  { value: 'dovetail', label: 'Milano' },
+  { value: 'arrow', label: 'Flecha' },
+];
+const base = import.meta.env.BASE_URL;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cristal Roto · generador de puzzles</title>
+    <meta
+      name="description"
+      content="Genera puzzles de efecto cristal roto y expórtalos en SVG listo para corte láser."
+    />
+    <link rel="icon" type="image/svg+xml" href={`${base.replace(/\/?$/, '/')}favicon.svg`} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="text-sm">
+    <div class="mx-auto flex max-w-[1500px] flex-col gap-5 px-4 py-5 lg:grid lg:grid-cols-[1fr_360px] lg:gap-8 lg:px-8 lg:py-8">
+      <!-- Header -->
+      <header class="rise lg:col-span-2 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-4">
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.3em] text-laser">Generador · corte láser</p>
+          <h1 class="font-display text-4xl leading-none font-bold tracking-tight sm:text-5xl">
+            Cristal<span class="text-glass">/</span>Roto
+          </h1>
+        </div>
+        <p class="max-w-sm text-dim">
+          Haz clic sobre la plancha para elegir el punto de impacto. Cada grieta se exporta una sola vez: sin cortes dobles.
+        </p>
+      </header>
+
+      <!-- Stage -->
+      <main class="rise min-w-0 flex flex-col gap-3" style="animation-delay: 80ms">
+        <div class="bed relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-line p-4 pb-8 sm:p-8 lg:aspect-auto lg:h-[calc(100dvh-220px)] lg:min-h-[520px]">
+          <svg id="sheet" class="glow max-h-full max-w-full touch-none select-none cursor-crosshair" role="img" aria-label="Vista previa del puzzle">
+            <defs>
+              <linearGradient id="acrylic" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1a2a33" />
+                <stop offset="0.55" stop-color="#101a20" />
+                <stop offset="1" stop-color="#16242c" />
+              </linearGradient>
+            </defs>
+            <rect id="plate" x="0" y="0" fill="url(#acrylic)" stroke="#8fe6ff" stroke-opacity="0.7" vector-effect="non-scaling-stroke" stroke-width="1.5"></rect>
+            <g class="pieces" id="pieces-g"></g>
+            <g id="impact" pointer-events="none">
+              <circle class="pulse" fill="none" stroke="#ff6a2b" vector-effect="non-scaling-stroke" stroke-width="1.5"></circle>
+              <circle class="pulse" fill="none" stroke="#ff6a2b" vector-effect="non-scaling-stroke" stroke-width="1.5"></circle>
+              <path id="cross" stroke="#ff6a2b" vector-effect="non-scaling-stroke" stroke-width="2"></path>
+            </g>
+          </svg>
+          <span id="dims" class="pointer-events-none absolute bottom-2 left-3 text-[11px] text-dim"></span>
+          <span id="coords" class="pointer-events-none absolute right-3 bottom-2 text-[11px] text-laser"></span>
+        </div>
+
+        <dl class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+          <div class="bg-panel px-4 py-3">
+            <dt class="text-[11px] uppercase tracking-widest text-dim">Piezas</dt>
+            <dd id="stat-pieces" class="font-display text-2xl font-bold">–</dd>
+          </div>
+          <div class="bg-panel px-4 py-3">
+            <dt class="text-[11px] uppercase tracking-widest text-dim">Pestañas</dt>
+            <dd id="stat-tabs" class="font-display text-2xl font-bold">–</dd>
+          </div>
+          <div class="bg-panel px-4 py-3">
+            <dt class="text-[11px] uppercase tracking-widest text-dim">Longitud de corte</dt>
+            <dd id="stat-length" class="font-display text-2xl font-bold">–</dd>
+          </div>
+          <div class="bg-panel px-4 py-3">
+            <dt class="text-[11px] uppercase tracking-widest text-dim">Pieza media</dt>
+            <dd id="stat-avg" class="font-display text-2xl font-bold">–</dd>
+          </div>
+        </dl>
+      </main>
+
+      <!-- Controls -->
+      <aside class="rise min-w-0 flex flex-col gap-5 rounded-lg border border-line bg-panel p-5" style="animation-delay: 160ms">
+        <section class="flex flex-col gap-4">
+          {
+            sliders.map((s) => (
+              <label class="block">
+                <span class="flex items-baseline justify-between">
+                  <span class="text-[11px] uppercase tracking-widest text-dim">{s.label}</span>
+                  <span class="font-display text-lg font-bold">
+                    <output id={`${s.id}-out`}>{s.value}</output>
+                    <span class="ml-0.5 text-xs font-medium text-dim">{s.unit}</span>
+                  </span>
+                </span>
+                <input type="range" id={s.id} min={s.min} max={s.max} step={s.step} value={s.value} />
+              </label>
+            ))
+          }
+          <p class="-mt-2 text-[11px] leading-snug text-dim">
+            Concentración: cuánto se reducen las piezas cerca del impacto. Pestaña 0 = sin encaje.
+          </p>
+        </section>
+
+        <fieldset class="flex flex-col gap-2">
+          <legend class="mb-2 text-[11px] uppercase tracking-widest text-dim">Forma de pestaña</legend>
+          <div class="grid grid-cols-3 gap-1 rounded-md border border-line p-1" id="style-group">
+            {
+              styles.map((st, i) => (
+                <label class="cursor-pointer">
+                  <input type="radio" name="tabStyle" value={st.value} class="peer sr-only" checked={i === 0} />
+                  <span class="block rounded py-1.5 text-center text-dim transition peer-checked:bg-glass peer-checked:text-bed peer-focus-visible:ring-2 peer-focus-visible:ring-laser hover:text-ink">
+                    {st.label}
+                  </span>
+                </label>
+              ))
+            }
+          </div>
+        </fieldset>
+
+        <div class="flex items-center justify-between gap-3 border-t border-line pt-4">
+          <div>
+            <span class="text-[11px] uppercase tracking-widest text-dim">Semilla</span>
+            <p id="seed-out" class="font-display text-lg font-bold">–</p>
+          </div>
+          <button id="reshatter" class="rounded-md border border-glass/40 px-4 py-2 font-display font-bold text-glass transition hover:border-glass hover:bg-glass/10 active:scale-95">
+            ↻ Romper de nuevo
+          </button>
+        </div>
+
+        <div class="flex flex-col gap-3 border-t border-line pt-4">
+          <label class="flex cursor-pointer items-center justify-between gap-3">
+            <span class="text-dim">Incluir marco exterior</span>
+            <input id="frame" type="checkbox" checked class="size-4 accent-[#ff6a2b]" />
+          </label>
+          <label class="flex items-center justify-between gap-3">
+            <span class="text-dim">Grosor de línea (mm)</span>
+            <input id="stroke" type="number" min="0.001" max="1" step="0.01" value="0.1" class="w-24 rounded border border-line bg-bed px-2 py-1 text-right focus:border-glass focus:outline-none" />
+          </label>
+        </div>
+
+        <div class="mt-auto flex flex-col gap-2">
+          <button id="export" class="rounded-md bg-laser px-4 py-3 font-display text-lg font-bold text-bed shadow-[0_0_30px_-8px_#ff6a2b] transition hover:brightness-110 active:scale-[0.98]">
+            Exportar SVG
+          </button>
+          <button id="share" class="rounded-md px-4 py-2 text-dim transition hover:text-ink">
+            Copiar enlace a esta configuración
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      import { shatter, toSvg, pathD, type ShatterParams, type TabStyle } from '../lib/shatter';
+
+      const $ = <T extends Element = HTMLElement>(sel: string) => document.querySelector(sel) as unknown as T;
+      const sheet = $<SVGSVGElement>('#sheet');
+      const piecesG = $<SVGGElement>("#pieces-g");
+      const plate = $<SVGRectElement>('#plate');
+      const impactG = $<SVGGElement>('#impact');
+
+      const ids = ['pieces', 'width', 'height', 'concentration', 'tab'] as const;
+      const inputs = Object.fromEntries(ids.map((id) => [id, $<HTMLInputElement>(`#${id}`)])) as Record<
+        (typeof ids)[number],
+        HTMLInputElement
+      >;
+
+      const state = {
+        impact: [0.42, 0.6] as [number, number], // relative to the sheet
+        seed: Math.floor(Math.random() * 1e6),
+        style: 'mixed' as TabStyle,
+      };
+
+      // ---- URL hash <-> state -------------------------------------------------
+      function readHash() {
+        const q = new URLSearchParams(location.hash.slice(1));
+        for (const id of ids) if (q.has(id)) inputs[id].value = q.get(id)!;
+        if (q.has('seed')) state.seed = Number(q.get('seed')) || state.seed;
+        if (q.has('ix') && q.has('iy')) state.impact = [Number(q.get('ix')), Number(q.get('iy'))];
+        const st = q.get('style');
+        if (st === 'mixed' || st === 'dovetail' || st === 'arrow') state.style = st;
+        $<HTMLInputElement>(`input[name="tabStyle"][value="${state.style}"]`).checked = true;
+      }
+      function writeHash() {
+        const q = new URLSearchParams();
+        for (const id of ids) q.set(id, inputs[id].value);
+        q.set('ix', state.impact[0].toFixed(4));
+        q.set('iy', state.impact[1].toFixed(4));
+        q.set('style', state.style);
+        q.set('seed', String(state.seed));
+        history.replaceState(null, '', `#${q}`);
+      }
+
+      // ---- generation ---------------------------------------------------------
+      function params(): ShatterParams {
+        const width = Number(inputs.width.value);
+        const height = Number(inputs.height.value);
+        return {
+          width,
+          height,
+          pieces: Number(inputs.pieces.value),
+          impact: [state.impact[0] * width, state.impact[1] * height],
+          concentration: Number(inputs.concentration.value) / 100,
+          tabSize: Number(inputs.tab.value),
+          tabStyle: state.style,
+          seed: state.seed,
+        };
+      }
+
+      let current: { p: ShatterParams; r: ReturnType<typeof shatter> } | null = null;
+
+      function render() {
+        const p = params();
+        const r = shatter(p);
+        current = { p, r };
+        const { width: W, height: H } = p;
+
+        sheet.setAttribute('viewBox', `${-W * 0.01} ${-H * 0.01} ${W * 1.02} ${H * 1.02}`);
+        sheet.style.aspectRatio = `${W} / ${H}`;
+        sheet.style.width = W >= H ? '100%' : 'auto';
+        sheet.style.height = W >= H ? 'auto' : '100%';
+        plate.setAttribute('width', String(W));
+        plate.setAttribute('height', String(H));
+
+        piecesG.innerHTML = r.pieces.map((pl) => `<path class="piece" d="${pathD(pl, true)}"/>`).join('');
+
+        const [ix, iy] = p.impact;
+        const m = Math.min(W, H);
+        const c = m * 0.025;
+        impactG.querySelectorAll<SVGCircleElement>('.pulse').forEach((el) => {
+          el.setAttribute('cx', String(ix));
+          el.setAttribute('cy', String(iy));
+          el.style.setProperty('--pulse-r', `${m * 0.09}px`);
+        });
+        $('#cross').setAttribute('d', `M${ix - c} ${iy}H${ix + c}M${ix} ${iy - c}V${iy + c}`);
+
+        const asked = p.pieces;
+        $('#stat-pieces').innerHTML =
+          r.pieces.length === asked
+            ? String(asked)
+            : `${r.pieces.length}<span class="ml-1 text-xs font-medium text-laser" title="Piezas demasiado pequeñas para este tamaño">/ ${asked}</span>`;
+        $('#stat-tabs').textContent = String(r.tabCount);
+        $('#stat-length').textContent = `${(r.cutLength / 1000).toFixed(2)} m`;
+        const avg = Math.sqrt((W * H) / r.pieces.length);
+        $('#stat-avg').textContent = `≈${avg.toFixed(0)} mm`;
+        $('#dims').textContent = `${W} × ${H} mm`;
+        $('#coords').textContent = `impacto ${ix.toFixed(0)}, ${iy.toFixed(0)} mm`;
+        $('#seed-out').textContent = `#${state.seed}`;
+        writeHash();
+      }
+
+      let queued = false;
+      function schedule() {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+          queued = false;
+          render();
+        });
+      }
+
+      // ---- controls -----------------------------------------------------------
+      function syncSlider(el: HTMLInputElement) {
+        const pct = ((Number(el.value) - Number(el.min)) / (Number(el.max) - Number(el.min))) * 100;
+        el.style.setProperty('--pct', `${pct}%`);
+        $(`#${el.id}-out`).textContent = el.value;
+      }
+      for (const el of Object.values(inputs)) {
+        el.addEventListener('input', () => {
+          syncSlider(el);
+          schedule();
+        });
+      }
+      document.querySelectorAll<HTMLInputElement>('input[name="tabStyle"]').forEach((el) =>
+        el.addEventListener('change', () => {
+          state.style = el.value as TabStyle;
+          schedule();
+        }),
+      );
+      $('#reshatter').addEventListener('click', () => {
+        state.seed = Math.floor(Math.random() * 1e6);
+        schedule();
+      });
+
+      // Impact point: click or drag on the sheet
+      function setImpactFromEvent(ev: PointerEvent) {
+        const ctm = sheet.getScreenCTM();
+        if (!ctm) return;
+        const pt = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(ctm.inverse());
+        const W = Number(inputs.width.value);
+        const H = Number(inputs.height.value);
+        const clamp = (v: number) => Math.min(0.995, Math.max(0.005, v));
+        state.impact = [clamp(pt.x / W), clamp(pt.y / H)];
+        schedule();
+      }
+      sheet.addEventListener('pointerdown', (ev) => {
+        sheet.setPointerCapture(ev.pointerId);
+        setImpactFromEvent(ev);
+      });
+      sheet.addEventListener('pointermove', (ev) => {
+        if (sheet.hasPointerCapture(ev.pointerId)) setImpactFromEvent(ev);
+      });
+
+      // ---- export -------------------------------------------------------------
+      $('#export').addEventListener('click', () => {
+        if (!current) return;
+        const strokeWidth = Math.max(0.001, Number($<HTMLInputElement>('#stroke').value) || 0.1);
+        const frame = $<HTMLInputElement>('#frame').checked;
+        const svg = toSvg(current.p, current.r, { strokeWidth, frame });
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cristal-roto_${current.p.width}x${current.p.height}_${current.r.pieces.length}p_${state.seed}.svg`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+
+      $('#share').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget as HTMLButtonElement;
+        try {
+          await navigator.clipboard.writeText(location.href);
+          btn.textContent = '✓ Enlace copiado';
+        } catch {
+          btn.textContent = 'Copia la URL de la barra de direcciones';
+        }
+        setTimeout(() => (btn.textContent = 'Copiar enlace a esta configuración'), 2000);
+      });
+
+      readHash();
+      Object.values(inputs).forEach(syncSlider);
+      render();
+    </script>
+  </body>
+</html>
